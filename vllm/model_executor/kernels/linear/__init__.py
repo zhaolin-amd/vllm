@@ -118,6 +118,9 @@ from vllm.model_executor.kernels.linear.nvfp4.flashinfer import (
 from vllm.model_executor.kernels.linear.nvfp4.marlin import (
     MarlinNvFp4LinearKernel,
 )
+from vllm.model_executor.kernels.linear.nvfp4.nvfp4_mxfp4_mfma import (
+    Nvfp4Mxfp4MfmaLinearKernel,
+)
 from vllm.model_executor.kernels.linear.scaled_mm import (
     Fp8BlockScaledMMLinearKernel,
     FP8ScaledMMLinearKernel,
@@ -402,6 +405,9 @@ _POSSIBLE_NVFP4_KERNELS: dict[PlatformEnum, list[type[NvFp4LinearKernel]]] = {
         EmulationNvFp4LinearKernel,
     ],
     PlatformEnum.ROCM: [
+        # Nvfp4Mxfp4MfmaLinearKernel (nvfp4-mxfp4-mfma) is intentionally NOT
+        # auto-selected: it is opt-in via VLLM_NVFP4_GEMM_BACKEND so the ROCm
+        # default stays emulation until the FP4-MFMA path is validated.
         EmulationNvFp4LinearKernel,
     ],
 }
@@ -844,6 +850,7 @@ _NVFP4_BACKEND_TO_KERNEL: dict[str, type[NvFp4LinearKernel]] = {
     "marlin": MarlinNvFp4LinearKernel,
     "flashinfer-trtllm": FlashInferTrtllmNvFp4LinearKernel,
     "flashinfer-cudnn": FlashInferCudnnNvFp4LinearKernel,
+    "nvfp4-mxfp4-mfma": Nvfp4Mxfp4MfmaLinearKernel,
     "emulation": EmulationNvFp4LinearKernel,
 }
 
@@ -1076,6 +1083,7 @@ __all__ = [
     "FlashInferTrtllmNvFp4LinearKernel",
     "FlashInferCudnnNvFp4LinearKernel",
     "MarlinNvFp4LinearKernel",
+    "Nvfp4Mxfp4MfmaLinearKernel",
     "_KernelT",
     "DeepGemmFp8BlockScaledMMKernel",
     "FlashInferFp8DeepGEMMDynamicBlockScaledKernel",
