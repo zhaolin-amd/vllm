@@ -73,7 +73,8 @@ def test_nvfp4_mfma_matches_emulation(m: int, n: int, k: int) -> None:
     )
 
     w_fp4 = _pack_e2m1(w_fp4_packed.reshape(n, k))
-    w_sf = w_sf.view(torch.float8_e4m3fn)
+    # ref_nvfp4_quant returns float32 scales; convert (not bit-view) to e4m3.
+    w_sf = w_sf.to(torch.float8_e4m3fn)
 
     # MFMA kernel path.
     x_fp4, x_sf = quantize_nvfp4_activation(x, a_global_inv, block_size=bs)
@@ -88,19 +89,28 @@ def test_nvfp4_mfma_matches_emulation(m: int, n: int, k: int) -> None:
 
     # Emulation reference: dequant both operands to bf16 and matmul.
     x_dq = _quant_dequant(x, a_global_inv, bs)
+    # dequantize_to_dtype multiplies the block scale by global_scale; the weight
+    # block scales were produced with w_global_inv, so the matching global here
+    # is w_global (== production layer.weight_global_scale), not w_global_inv.
     w_dq = dequantize_to_dtype(
         w_fp4.view(torch.uint8),
         w_sf,
-        w_global_inv,
+        w_global,
         torch.bfloat16,
         bs,
         swizzle=False,
     )
     y_ref = torch.matmul(x_dq, w_dq.t())
 
-    torch.testing.assert_close(
-        y_mfma.float(), y_ref.float(), atol=2e-1, rtol=2e-1
-    )
+    # Element-wise assert_close is unsuitable here: the emulation matmul runs in
+    # bf16, so at large K a few near-zero output elements differ from the
+    # kernel's fp32 accumulation by more than any per-element rtol. Compare with
+    # a Frobenius relative error instead, which reflects overall agreement.
+    rel_fro = (
+        torch.linalg.norm(y_mfma.float() - y_ref.float())
+        / torch.linalg.norm(y_ref.float())
+    ).item()
+    assert rel_fro < 2e-2, f"rel_fro={rel_fro:.3e} too large for {m}x{n}x{k}"
 
 
 def _quant_dequant(x, global_scale, bs):

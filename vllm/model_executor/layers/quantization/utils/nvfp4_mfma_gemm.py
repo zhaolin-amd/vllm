@@ -84,7 +84,9 @@ if _HAS_TRITON:
         elements; the byte dimension is ``BLOCK_SIZE_K // 2``. Each block of
         ``NVFP4_BLOCK_SIZE`` (16) elements along K shares one E4M3 scale.
         """
-        SCALE_GROUP_SIZE: tl.constexpr = NVFP4_BLOCK_SIZE
+        # Literal 16: triton forbids reading module globals (NVFP4_BLOCK_SIZE)
+        # inside @jit unless they are tl.constexpr.
+        SCALE_GROUP_SIZE: tl.constexpr = 16
         SCALES_PER_BLOCK: tl.constexpr = BLOCK_SIZE_K // SCALE_GROUP_SIZE
 
         pid_m = tl.program_id(0)
@@ -104,11 +106,12 @@ if _HAS_TRITON:
 
         accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
 
+        # Literal 127 (== NEUTRAL_E8M0): see SCALE_GROUP_SIZE note above.
         neutral = tl.full(
-            (BLOCK_SIZE_M, BLOCK_SIZE_K // SCALE_GROUP_SIZE), NEUTRAL_E8M0, tl.uint8
+            (BLOCK_SIZE_M, BLOCK_SIZE_K // SCALE_GROUP_SIZE), 127, tl.uint8
         )
         neutral_b = tl.full(
-            (BLOCK_SIZE_N, BLOCK_SIZE_K // SCALE_GROUP_SIZE), NEUTRAL_E8M0, tl.uint8
+            (BLOCK_SIZE_N, BLOCK_SIZE_K // SCALE_GROUP_SIZE), 127, tl.uint8
         )
 
         num_k_tiles = tl.cdiv(K, BLOCK_SIZE_K)
@@ -261,7 +264,9 @@ def gemm_nvfp4_mfma(
 
     a_sf = a_sf.view(torch.float8_e4m3fn)
     w_sf = w_sf.view(torch.float8_e4m3fn)
-    alpha_f = alpha.to(torch.float32).reshape(())
+    # Pass a python float, not a 0-d tensor: triton would bind the latter as a
+    # pointer<fp32>, breaking the scalar ``accumulator *= alpha`` in the kernel.
+    alpha_f = float(alpha)
 
     y = torch.empty(m, n, dtype=out_dtype, device=x_fp4.device)
 
