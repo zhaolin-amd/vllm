@@ -92,14 +92,14 @@ out = (acc * alpha).to(out_dtype)
 
 2. **新 kernel 类** —
    `vllm/model_executor/kernels/linear/nvfp4/nvfp4_mxfp4_mfma.py`
-   `Nvfp4Mxfp4MfmaLinearKernel(NvFp4LinearKernel)`，flow 名 `nvfp4-mxfp4-mfma`。
+   `Nvfp4Mxfp4MfmaLinearKernel(NvFp4LinearKernel)`，backend 名 `nvfp4_mxfp4_mfma`。
    - `is_supported`: `current_platform.is_rocm()` 且 `on_gfx950()` 且 triton 可用。
    - `process_weights_after_loading`: 权重保持 NVFP4 packed + E4M3 block scale 原样；打印启动横幅明确告知用户走的是此 flow 而非 emulation。
    - `apply_weights`: 激活量化 → 调 `gemm_nvfp4_mfma` → 加 bias。
 
 3. **注册** — `vllm/model_executor/kernels/linear/__init__.py`
-   - import + 加入 `_NVFP4_BACKEND_TO_KERNEL["nvfp4-mxfp4-mfma"]`。
-   - **不**加入 `_POSSIBLE_NVFP4_KERNELS[PlatformEnum.ROCM]` 的自动选择列表 —— 纯 opt-in，ROCm 默认仍为 emulation，零行为改动。
+   - import + 加入 `_LINEAR_BACKEND_KERNEL_MAP["nvfp4_mxfp4_mfma"]`。
+   - 加入 `_POSSIBLE_NVFP4_KERNELS[PlatformEnum.ROCM]`，但**排在 emulation 之后** —— auto 选择恒命中 emulation，故 ROCm 默认零行为改动；仅当 `--linear-backend nvfp4_mxfp4_mfma` 显式指定时才走此 flow。
 
 4. **测试** —
    `tests/kernels/quantization/test_nvfp4_mfma_gemm.py`
@@ -114,17 +114,17 @@ out = (acc * alpha).to(out_dtype)
   - input global scale + 预算 `layer.alpha`：`:121-133`
   - q/k/v 融合层 global 不一致 warn：`:96-103`
 - kernel 选择/注册：`vllm/model_executor/kernels/linear/__init__.py`
-  - `init_nvfp4_linear_kernel`：`:851`
-  - `_NVFP4_BACKEND_TO_KERNEL`、`_POSSIBLE_NVFP4_KERNELS`（ROCm 自动选择列表仅 `EmulationNvFp4LinearKernel`）。
+  - `init_nvfp4_linear_kernel`、`_filter_kernels_by_backend`（按 `--linear-backend` 过滤）。
+  - `_LINEAR_BACKEND_KERNEL_MAP`（backend 名 → kernel 集合）、`_POSSIBLE_NVFP4_KERNELS`（ROCm auto 列表 emulation 在前、mfma 在后，故 auto 恒选 emulation）。
 - kernel 基类/模板：`nvfp4/base.py`、`nvfp4/emulation.py`。
 
 ## 8. 启用方式与用户可见性
 
 - **默认（ROCm，含 gfx950）**：emulation。本改动**不修改**任何现有默认。
-- **启用此 flow**：`VLLM_NVFP4_GEMM_BACKEND=nvfp4-mxfp4-mfma`（仅 gfx950+triton 支持，否则
+- **启用此 flow**：`--linear-backend nvfp4_mxfp4_mfma`（仅 gfx950+triton 支持，否则
   `is_supported()` 报错说明原因）。
 - **如何确认走了哪条**：加载时日志区分两者 ——
-  - 此 flow：`Running ROCm NVFP4 via the 'nvfp4-mxfp4-mfma' flow: ... This is not the emulation backend.`
+  - 此 flow：`Running ROCm NVFP4 via the 'nvfp4_mxfp4_mfma' flow: ... This is not the emulation backend.`
   - emulation：选择器原有的 `Using EmulationNvFp4LinearKernel for NVFP4 GEMM` /
     “falling back to the slow and unoptimized emulation backend”。
 

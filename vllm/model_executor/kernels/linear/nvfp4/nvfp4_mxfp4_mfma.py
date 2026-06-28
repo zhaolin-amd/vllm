@@ -9,8 +9,8 @@ in fp32 software. See ``docs/design/nvfp4_on_rocm_mfma.md`` and
 ``vllm.model_executor.layers.quantization.utils.nvfp4_mfma_gemm``.
 
 This backend is opt-in. It is never auto-selected; enable it explicitly with
-``VLLM_NVFP4_GEMM_BACKEND=nvfp4-mxfp4-mfma``. Without it, ROCm NVFP4 keeps
-using the emulation backend.
+``--linear-backend nvfp4_mxfp4_mfma``. Without it, ROCm NVFP4 keeps using the
+emulation backend.
 """
 
 import torch
@@ -24,7 +24,7 @@ logger = init_logger(__name__)
 
 # User-facing name for this flow, used in the startup banner so it is obvious
 # whether ROCm NVFP4 is running emulation or this FP4-MFMA path.
-BACKEND_NAME = "nvfp4-mxfp4-mfma"
+BACKEND_NAME = "nvfp4_mxfp4_mfma"
 
 
 class Nvfp4Mxfp4MfmaLinearKernel(NvFp4LinearKernel):
